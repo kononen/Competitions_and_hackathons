@@ -1,0 +1,1584 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>Радар слабых сигналов и дерево решений</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #020617;
+      --card-bg: rgba(15,23,42,0.92);
+      --card-muted-bg: rgba(15,23,42,0.78);
+      --border-subtle: rgba(148,163,184,0.3);
+      --accent: #38bdf8;
+      --accent-soft: rgba(56,189,248,0.12);
+      --text-main: #e5e7eb;
+      --text-muted: #9ca3af;
+      --pill-bg: rgba(15,23,42,0.9);
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top, #0f172a 0, #020617 55%, #000 100%);
+      color: var(--text-main);
+    }
+
+    .deck-header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      backdrop-filter: blur(16px);
+      background: linear-gradient(to right, rgba(15,23,42,0.95), rgba(15,23,42,0.75));
+      border-bottom: 1px solid rgba(148,163,184,0.28);
+      padding: 10px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .deck-title {
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .deck-title-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: radial-gradient(circle, #22c55e, #16a34a);
+      box-shadow: 0 0 12px rgba(34,197,94,0.9);
+    }
+
+    .deck-subtitle {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .deck-nav {
+      display: flex;
+      gap: 6px;
+      font-size: 12px;
+    }
+
+    .deck-nav a {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: all 0.15s ease-out;
+    }
+
+    .deck-nav a:hover {
+      border-color: rgba(148,163,184,0.7);
+      color: #e5e7eb;
+      background: rgba(15,23,42,0.9);
+    }
+
+    main {
+      padding: 32px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .slide {
+      position: relative;
+      margin: 24px auto 40px;
+      padding: 1px;
+      border-radius: 30px;
+      background:
+        radial-gradient(circle at top left, rgba(56,189,248,0.4), transparent 60%),
+        radial-gradient(circle at bottom right, rgba(129,140,248,0.4), transparent 60%),
+        linear-gradient(135deg, rgba(15,23,42,0.9), rgba(15,23,42,0.95));
+    }
+
+    .slide-inner {
+      border-radius: 28px;
+      background: radial-gradient(circle at top left, rgba(15,23,42,0.96), rgba(2,6,23,0.98));
+      border: 1px solid rgba(148,163,184,0.35);
+      padding: 24px 28px 26px;
+      box-shadow: 0 22px 40px rgba(15,23,42,0.9);
+    }
+
+    .slide-number {
+      position: absolute;
+      top: 12px;
+      right: 26px;
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: rgba(148,163,184,0.8);
+    }
+
+    h1, h2, h3 {
+      margin: 0 0 12px;
+    }
+
+    h1 {
+      font-size: 28px;
+      letter-spacing: 0.02em;
+    }
+
+    h2 {
+      font-size: 22px;
+    }
+
+    h3 {
+      font-size: 16px;
+    }
+
+    p {
+      margin: 0 0 10px;
+      line-height: 1.5;
+    }
+
+    .lead {
+      font-size: 15px;
+      color: #e5e7eb;
+    }
+
+    .muted {
+      color: var(--text-muted);
+    }
+
+    .tagline {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: rgba(148,163,184,0.9);
+      margin-bottom: 10px;
+    }
+
+    .tagline-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: radial-gradient(circle, #38bdf8, #0ea5e9);
+      box-shadow: 0 0 14px rgba(56,189,248,0.9);
+    }
+
+    .pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 12px 0 6px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(148,163,184,0.45);
+      background: var(--pill-bg);
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: minmax(0,1.1fr) minmax(0,1fr);
+      gap: 18px;
+      margin-top: 16px;
+    }
+
+    .card {
+      border-radius: 18px;
+      border: 1px solid rgba(148,163,184,0.45);
+      background: var(--card-bg);
+      padding: 14px 14px 12px;
+    }
+
+    .card-muted {
+      background: var(--card-muted-bg);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(148,163,184,0.55);
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: rgba(148,163,184,0.9);
+      margin-bottom: 6px;
+    }
+
+    .badge-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: rgba(148,163,184,0.9);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 14px;
+      font-size: 13px;
+    }
+
+    th, td {
+      padding: 6px 8px;
+      border-bottom: 1px solid rgba(30,41,59,0.9);
+      vertical-align: top;
+    }
+
+    thead th {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      text-align: left;
+      color: rgba(148,163,184,0.9);
+      border-bottom: 1px solid rgba(148,163,184,0.45);
+    }
+
+    tbody tr:nth-child(2n) td {
+      background: rgba(15,23,42,0.7);
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 30px;
+      padding: 0 6px;
+      height: 20px;
+      border-radius: 999px;
+      font-size: 11px;
+      border: 1px solid rgba(148,163,184,0.6);
+      background: rgba(15,23,42,0.9);
+    }
+
+    .chip-red {
+      border-color: rgba(248,113,113,0.8);
+      color: #fecaca;
+    }
+
+    .chip-green {
+      border-color: rgba(45,212,191,0.8);
+      color: #bbf7d0;
+    }
+
+    .chip-blue {
+      border-color: rgba(56,189,248,0.85);
+      color: #e0f2fe;
+    }
+
+    .intensity {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .intensity-value {
+      font-variant-numeric: tabular-nums;
+    }
+
+    .intensity-bar {
+      flex: 1;
+      height: 4px;
+      border-radius: 999px;
+      background: rgba(15,23,42,0.9);
+      overflow: hidden;
+    }
+
+    .intensity-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #22c55e, #f97316, #ef4444);
+    }
+
+    .roadmap {
+      list-style: none;
+      padding: 0;
+      margin: 16px 0 0;
+    }
+
+    .roadmap-step {
+      position: relative;
+      padding-left: 18px;
+      margin-bottom: 10px;
+    }
+
+    .roadmap-step::before {
+      content: "";
+      position: absolute;
+      left: 4px;
+      top: 8px;
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: #38bdf8;
+      box-shadow: 0 0 10px rgba(56,189,248,0.9);
+    }
+
+    .roadmap-step-title {
+      margin-bottom: 4px;
+    }
+
+    .charts-row {
+      display: grid;
+      grid-template-columns: minmax(0,1.1fr) minmax(0,1fr);
+      gap: 14px;
+      margin-top: 18px;
+    }
+
+    .chart-card {
+      border-radius: 20px;
+      border: 1px solid rgba(148,163,184,0.45);
+      background: radial-gradient(circle at top, rgba(15,23,42,0.98), rgba(2,6,23,1));
+      padding: 10px 10px 12px;
+    }
+
+    .chart-card svg {
+      width: 100%;
+      height: auto;
+      border-radius: 14px;
+      margin-top: 8px;
+    }
+
+    .chart-title {
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .chart-subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .info-box {
+      margin-top: 12px;
+      padding: 8px 10px;
+      border-radius: 14px;
+      border: 1px dashed rgba(148,163,184,0.6);
+      background: rgba(15,23,42,0.9);
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    #radar-chart text,
+    #matrix-chart text {
+      fill: #d1d5db;
+    }
+
+    .tree-diagram {
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-radius: 16px;
+      background: rgba(15,23,42,0.98);
+      border: 1px solid rgba(148,163,184,0.5);
+      font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 12px;
+      overflow-x: auto;
+      max-height: 420px;
+    }
+
+    @media (max-width: 900px) {
+      main {
+        padding: 16px;
+      }
+      .slide-inner {
+        padding: 18px 16px 20px;
+      }
+      .grid-2,
+      .charts-row {
+        grid-template-columns: minmax(0,1fr);
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="deck-header">
+    <div>
+      <div class="deck-title">
+        <span class="deck-title-dot"></span>
+        Радар слабых сигналов и дерево решений
+      </div>
+      <div class="deck-subtitle">
+        Цифровой контроль исполнения гос-проектов на основе данных
+      </div>
+    </div>
+    <nav class="deck-nav">
+      <a href="#slide-1">1</a>
+      <a href="#slide-2">2</a>
+      <a href="#slide-3">3</a>
+      <a href="#slide-4">4</a>
+      <a href="#slide-5">5</a>
+      <a href="#slide-6">6</a>
+      <a href="#slide-7">7</a>
+      <a href="#slide-8">8</a>
+      <a href="#slide-9">9</a>
+      <a href="#slide-10">10</a>
+      <a href="#slide-11">11</a>
+      <a href="#slide-12">12</a>
+      <a href="#slide-13">13</a>
+    </nav>
+  </header>
+
+  <main>
+    <!-- СЛАЙД 1 -->
+    <section class="slide" id="slide-1">
+      <div class="slide-number">СЛАЙД 1</div>
+      <div class="slide-inner">
+        <div class="tagline">
+          <span class="tagline-dot"></span>
+          Концепт продукта
+        </div>
+        <h1>Трансформация модели управления в госсекторе РФ через цифровой контроль исполнения проектов</h1>
+        <p class="lead">
+          Добавляем к существующим государственным проектам цифровой слой объективного контроля на основе данных:
+          деньги, датчики, спутники, жалобы граждан. Цель — уменьшить разрыв между отчетами и реальностью
+          и повысить эффективность вложенных бюджетных средств.
+        </p>
+
+        <div class="grid-2">
+          <div>
+            <h3>Цель</h3>
+            <p>
+              Повысить эффективность государственных проектов за счёт
+              <strong>объективного контроля исполнения на основе данных</strong>, а не только бумажной отчётности.
+            </p>
+
+            <h3>Как это работает</h3>
+            <ul>
+              <li>Сравниваем план (KPI, смета, сроки) с фактическими данными: финансами, датчиками, жалобами, спутниковыми снимками.</li>
+              <li>Автоматически выявляем аномалии и расхождения.</li>
+              <li>Предлагаем сценарии корректировки курса (что изменить, где вмешаться, кого уведомить).</li>
+              <li>Даём всем уровням власти <strong>единую объективную картину</strong> исполнения через дашборды.</li>
+            </ul>
+          </div>
+
+          <div>
+            <h3>Внедрение</h3>
+            <ul>
+              <li>Старт с пилота в нескольких муниципальных проектах в 1–2 крупных городах.</li>
+              <li>Доказательство эффекта за счёт сокращения потерь, простоев и нецелевого расходования.</li>
+            </ul>
+
+            <h3>Экономика</h3>
+            <ul>
+              <li>Финансирование из бюджета самих проектов (1–3% от стоимости).</li>
+              <li>Окупаемость за счёт предотвращения брака, коррупции, простоев и завышения цен.</li>
+            </ul>
+
+            <h3>Масштабирование</h3>
+            <ul>
+              <li>По географии: от пилотных городов к региональной и федеральной сети.</li>
+              <li>По направлениям: сначала проекты с готовыми данными (благоустройство, дороги, ЖКХ), затем более сложные отрасли.</li>
+              <li>Идеал — переход от отдельных муниципальных кейсов к поддержке нацпроектов.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- СЛАЙД 2 -->
+    <section class="slide" id="slide-2">
+      <div class="slide-number">СЛАЙД 2</div>
+      <div class="slide-inner">
+        <div class="tagline">
+          <span class="tagline-dot"></span>
+          Триггеры и слабые сигналы
+        </div>
+        <h2>Карта триггеров и слабых сигналов</h2>
+        <p class="muted">
+          На этом слайде собраны исходные данные для анализа: триггеры — очевидные болевые точки системы,
+          слабые сигналы — ранние признаки изменений. Интенсивность оценивается по шкале от 1 до 10.
+        </p>
+
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Тип</th>
+              <th>Наименование</th>
+              <th>Интенсивность</th>
+              <th>Почему это важно</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- T1–T7 -->
+            <tr>
+              <td><span class="chip chip-red">T1</span></td>
+              <td>Триггер</td>
+              <td>Разрыв между отчетами и реальностью</td>
+              <td>
+                <div class="intensity">
+                  <span class="intensity-value">9</span>
+                  <div class="intensity-bar">
+                    <div class="intensity-bar-fill" style="width:90%"></div>
+                  </div>
+                </div>
+              </td>
+              <td class="muted">
+                Официальная отчетность по проектам часто не совпадает с фактическим состоянием дел и тем, что видят граждане.
+              </td>
+            </tr>
+            <tr>
+              <td><span class="chip chip-red">T2</span></td>
+              <td>Триггер</td>
+              <td>Недоступность объективных данных для решений</td>
+              <td>
+                <div class="intensity">
+                  <span class="intensity-value">8</span>
+                  <div class="intensity-bar">
+                    <div class="intensity-bar-fill" style="width:80%"></div>
+                  </div>
+                </div>
+              </td>
+              <td class="muted">
+                Решения принимаются на основе агрегированных отчётов, без доступа к первичным данным и независимым источникам.
+              </td>
+            </tr>
+            <tr>
+              <td><span class="chip chip-red">T3</span></td>
+              <td>Триггер</td>
+              <td>Культура управления через отписки</td>
+              <td>
+                <div class="intensity">
+                  <span class="intensity-value">9</span>
+                  <div class="intensity-bar">
+                    <div class="intensity-bar-fill" style="width:90%"></div>
+                  </div>
+                </div>
+              </td>
+              <td class="muted">
+                Обращения граждан формально «закрываются» ответами, но реальная проблема не устраняется.
+              </td>
+            </tr>
+            <tr>
+              <td><span class="chip chip-red">T4</span></td>
+              <td>Триггер</td>
+              <td>Изоляция ведомственных данных</td>
+              <td>
+                <div class="intensity">
+                  <span class="intensity-value">8</span>
+                  <div class="intensity-bar">
+                    <div class="intensity-bar-fill" style="width:80%"></div>
+                  </div>
+                </div>
+              </td>
+              <td class="muted">
+                У разных ведомств свои системы и метрики, нет сквозной картины исполнения проектов.
+              </td>
+            </tr>
+            <tr>
+              <td><span class="chip chip-red">T5</span></td>
+              <td>Триггер</td>
+              <td>Отсутствие владельца системных проблем</td>
+              <td>
+                <div class="intensity">
+                  <span class="intensity-value">7</span>
+                  <div class="intensity-bar">
+                    <div class="intensity-bar-fill" style="width:70%"></div>
+                  </div>
+                </div>
+              </td>
+              <td class="muted">
+                Возникающие сбои «распыляются» между участниками, нет ответственного за сквозной результат.
+              </td>
+            </tr>
+            <tr>
+              <td><span class="chip chip-red">T6</span></td>
+              <td>Триггер</td>
+              <td>Ручной контроль как узкое место</td>
+              <td>
+                <div class="intensity">
+                  <span class="intensity-value">7</span>
+                  <div class="intensity-bar">
+                    <div class="intensity-bar-fill" style="width:70%"></div>
+                  </div>
+                </div>
+              </td>
+              <td class="muted">
+                Качество исполнения проектов зависит от ручных проверок и личной вовлеченности конкретных людей.
+              </td>
+            </tr>
+            <tr>
+              <td><span class="chip chip-red">T7</span></td>
+              <td>Триггер</td>
+              <td>Потеря связи с обратной связью граждан</td>
+              <td>
+                <div class="intensity">
+                  <span class="intensity-value">8</span>
+                  <div class="intensity-bar">
+                    <div class="intensity-bar-fill" style="width:80%"></div>
+                  </div>
+                </div>
+              </td>
+              <td class="muted">
+                Обращения граждан не интегрированы в систему управления проектами, решения принимаются «в отрыве» от людей.
+              </td>
+            </tr>
+
+            <!-- S1–S5 -->
+            <tr>
+              <td><span class="chip chip-green">S1</span></td>
+              <td>Слабый сигнал</td>
+              <td>Цифровые двойники инфраструктуры</td>
+              <td>
+                <div class="intensity">
+                  <span class="intensity-value">3</span>
+                  <div class="intensity-bar">
+                    <div class="intensity-bar-fill" style="width:30%"></div>
+                  </div>
+                </div>
+              </td>
+              <td class="muted">
+                Появляются пилотные проекты по цифровым двойникам объектов, но пока они точечные и не становятся стандартом.
+              </td>
+            </tr>
+            <tr>
+              <td><span class="chip chip-green">S2</span></td>
+              <td>Слабый сигнал</td>
+              <td>Требование машинных данных от подрядчиков</td>
+              <td>
+                <div class="intensity">
+                  <span class="intensity-value">4</span>
+                  <div class="intensity-bar">
+                    <div class="intensity-bar-fill" style="width:40%"></div>
+                  </div>
+                </div>
+              </td>
+              <td class="muted">
+                Заказчики начинают включать в ТЗ требования по передаче «сырых» данных с техники и систем мониторинга.
+              </td>
+            </tr>
+            <tr>
+              <td><span class="chip chip-green">S3</span></td>
+              <td>Слабый сигнал</td>
+              <td>Спутниковая верификация «на бытовом уровне»</td>
+              <td>
+                <div class="intensity">
+                  <span class="intensity-value">4</span>
+                  <div class="intensity-bar">
+                    <div class="intensity-bar-fill" style="width:40%"></div>
+                  </div>
+                </div>
+              </td>
+              <td class="muted">
+                Активно используются открытые спутниковые снимки и карты для проверки факта выполнения работ.
+              </td>
+            </tr>
+            <tr>
+              <td><span class="chip chip-green">S4</span></td>
+              <td>Слабый сигнал</td>
+              <td>Анализ тональности обращений</td>
+              <td>
+                <div class="intensity">
+                  <span class="intensity-value">2</span>
+                  <div class="intensity-bar">
+                    <div class="intensity-bar-fill" style="width:20%"></div>
+                  </div>
+                </div>
+              </td>
+              <td class="muted">
+                Появляются инициативы по автоматическому анализу текстов жалоб и сообщений, но они пока экспериментальные.
+              </td>
+            </tr>
+            <tr>
+              <td><span class="chip chip-green">S5</span></td>
+              <td>Слабый сигнал</td>
+              <td>Запрос нового поколения управленцев</td>
+              <td>
+                <div class="intensity">
+                  <span class="intensity-value">4</span>
+                  <div class="intensity-bar">
+                    <div class="intensity-bar-fill" style="width:40%"></div>
+                  </div>
+                </div>
+              </td>
+              <td class="muted">
+                Молодые управленцы ожидают прозрачной аналитики в реальном времени и готовы работать «через данные».
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- СЛАЙД 3: радар и матрица -->
+    <section class="slide" id="slide-3">
+      <div class="slide-number">СЛАЙД 3</div>
+      <div class="slide-inner">
+        <div class="tagline">
+          <span class="tagline-dot"></span>
+          Визуализация слабых сигналов и триггеров
+        </div>
+        <h2>Радар интенсивности и матрица приоритизации</h2>
+        <p class="muted">
+          На этом слайде показаны те же триггеры и слабые сигналы, что и на предыдущем,
+          но в визуальной форме: слева — радар интенсивности, справа — матрица «вероятность × влияние».
+        </p>
+
+        <div class="pill-row">
+          <span class="pill" style="background:rgba(248,250,252,0.06); border-color:rgba(248,250,252,0.5);">
+            <span class="badge-dot" style="background:#f97373;"></span> Триггеры (очевидные проблемы)
+          </span>
+          <span class="pill" style="background:rgba(16,185,129,0.08); border-color:rgba(45,212,191,0.7);">
+            <span class="badge-dot" style="background:#22c55e;"></span> Слабые сигналы (ранние признаки)
+          </span>
+        </div>
+
+        <div class="charts-row">
+          <div class="chart-card">
+            <p class="chart-title">Радар интенсивности</p>
+            <p class="chart-subtitle">
+              Код и название сигнала расположены по кругу, радиус — сила влияния (1–10).
+            </p>
+
+            <svg id="radar-chart" viewBox="0 0 640 640" role="img" aria-label="Радар триггеров и слабых сигналов">
+              <rect x="0" y="0" width="640" height="640" rx="24" ry="24" fill="rgba(15,23,42,0.98)"/>
+
+              <!-- Концентрические круги (интенсивность 2,4,6,8,10) -->
+              <circle cx="310" cy="310" r="50"  fill="none" stroke="rgba(148,163,184,0.25)" stroke-width="1"/>
+              <circle cx="310" cy="310" r="100" fill="none" stroke="rgba(148,163,184,0.25)" stroke-width="1"/>
+              <circle cx="310" cy="310" r="150" fill="none" stroke="rgba(148,163,184,0.25)" stroke-width="1"/>
+              <circle cx="310" cy="310" r="200" fill="none" stroke="rgba(148,163,184,0.25)" stroke-width="1"/>
+              <circle cx="310" cy="310" r="250" fill="none" stroke="rgba(148,163,184,0.25)" stroke-width="1"/>
+
+              <!-- Осевые линии (12 осей, каждые 30°) -->
+              <!-- 0: 90° (T1) -->
+              <line x1="310" y1="310" x2="310"   y2="60"   stroke="rgba(148,163,184,0.35)" stroke-width="1"/>
+              <!-- 1: 60° (T2) -->
+              <line x1="310" y1="310" x2="435"   y2="93.5" stroke="rgba(148,163,184,0.35)" stroke-width="1"/>
+              <!-- 2: 30° (T3) -->
+              <line x1="310" y1="310" x2="526.5" y2="185"  stroke="rgba(148,163,184,0.35)" stroke-width="1"/>
+              <!-- 3: 0° (T4) -->
+              <line x1="310" y1="310" x2="560"   y2="310"  stroke="rgba(148,163,184,0.35)" stroke-width="1"/>
+              <!-- 4: -30° (T5) -->
+              <line x1="310" y1="310" x2="526.5" y2="435"  stroke="rgba(148,163,184,0.35)" stroke-width="1"/>
+              <!-- 5: -60° (T6) -->
+              <line x1="310" y1="310" x2="435"   y2="526.5" stroke="rgba(148,163,184,0.35)" stroke-width="1"/>
+              <!-- 6: -90° (T7) -->
+              <line x1="310" y1="310" x2="310"   y2="560"  stroke="rgba(148,163,184,0.35)" stroke-width="1"/>
+              <!-- 7: -120° (S1) -->
+              <line x1="310" y1="310" x2="185"   y2="526.5" stroke="rgba(148,163,184,0.35)" stroke-width="1"/>
+              <!-- 8: -150° (S2) -->
+              <line x1="310" y1="310" x2="93.5"  y2="435"  stroke="rgba(148,163,184,0.35)" stroke-width="1"/>
+              <!-- 9: 180° (S3) -->
+              <line x1="310" y1="310" x2="60"    y2="310"  stroke="rgba(148,163,184,0.35)" stroke-width="1"/>
+              <!-- 10: 150° (S4) -->
+              <line x1="310" y1="310" x2="93.5"  y2="185"  stroke="rgba(148,163,184,0.35)" stroke-width="1"/>
+              <!-- 11: 120° (S5) -->
+              <line x1="310" y1="310" x2="185"   y2="93.5" stroke="rgba(148,163,184,0.35)" stroke-width="1"/>
+
+              <!-- Подписи окружностей по интенсивности -->
+              <text x="310" y="260" text-anchor="middle" font-size="10">2</text>
+              <text x="310" y="210" text-anchor="middle" font-size="10">4</text>
+              <text x="310" y="160" text-anchor="middle" font-size="10">6</text>
+              <text x="310" y="110" text-anchor="middle" font-size="10">8</text>
+              <text x="310" y="60"  text-anchor="middle" font-size="10">10</text>
+
+              <!-- Полигоны: триггеры и слабые сигналы (радиусы строго по интенсивности) -->
+              <!-- Триггеры: T1–T7 -->
+              <polygon
+                points="
+                  310,85
+                  410,136.8
+                  504.9,197.5
+                  510,310
+                  461.6,397.5
+                  397.5,461.6
+                  310,510
+                "
+                fill="rgba(248,250,252,0.28)"
+                stroke="rgba(248,250,252,0.7)"
+                stroke-width="1.5"
+              />
+              <!-- Слабые сигналы: S1–S5 -->
+              <polygon
+                points="
+                  272.5,375
+                  223.4,360
+                  210,310
+                  266.7,285
+                  260,223.4
+                "
+                fill="rgba(45,212,191,0.20)"
+                stroke="rgba(45,212,191,0.85)"
+                stroke-width="1.5"
+              />
+
+              <!-- Триггеры (точки, радиус = 25 × интенсивность) -->
+              <circle class="radar-point" cx="310"   cy="85"   r="4"
+                      fill="#f97373"
+                      data-id="T1"
+                      data-type="trigger"
+                      data-intensity="9"
+                      data-name="Разрыв между отчетами и реальностью"
+                      data-desc="Официальная отчетность не совпадает с тем, что видят граждане и независимые источники."/>
+              <circle class="radar-point" cx="410"   cy="136.8" r="4"
+                      fill="#f97373"
+                      data-id="T2"
+                      data-type="trigger"
+                      data-intensity="8"
+                      data-name="Недоступность объективных данных для решений"
+                      data-desc="Принятие решений без доступа к первичным и независимым данным."/>
+              <circle class="radar-point" cx="504.9" cy="197.5" r="4"
+                      fill="#f97373"
+                      data-id="T3"
+                      data-type="trigger"
+                      data-intensity="9"
+                      data-name="Культура управления через отписки"
+                      data-desc="Формальная работа с обращениями граждан без устранения первопричин."/>
+              <circle class="radar-point" cx="510"   cy="310"   r="4"
+                      fill="#f97373"
+                      data-id="T4"
+                      data-type="trigger"
+                      data-intensity="8"
+                      data-name="Изоляция ведомственных данных"
+                      data-desc="Разрозненные системы и метрики не дают сквозной картины исполнения."/>
+              <circle class="radar-point" cx="461.6" cy="397.5" r="4"
+                      fill="#f97373"
+                      data-id="T5"
+                      data-type="trigger"
+                      data-intensity="7"
+                      data-name="Отсутствие владельца системных проблем"
+                      data-desc="Сложно найти ответственного за сквозной результат по проекту."/>
+              <circle class="radar-point" cx="397.5" cy="461.6" r="4"
+                      fill="#f97373"
+                      data-id="T6"
+                      data-type="trigger"
+                      data-intensity="7"
+                      data-name="Ручной контроль как узкое место"
+                      data-desc="Сильная зависимость от ручного контроля и человеческого фактора."/>
+              <circle class="radar-point" cx="310"   cy="510"   r="4"
+                      fill="#f97373"
+                      data-id="T7"
+                      data-type="trigger"
+                      data-intensity="8"
+                      data-name="Потеря связи с обратной связью граждан"
+                      data-desc="Обращения граждан не встроены в контур управления проектами."/>
+
+              <!-- Слабые сигналы (точки, радиус = 25 × интенсивность) -->
+              <circle class="radar-point" cx="272.5" cy="375"   r="4"
+                      fill="#22c55e"
+                      data-id="S1"
+                      data-type="signal"
+                      data-intensity="3"
+                      data-name="Цифровые двойники инфраструктуры"
+                      data-desc="Точечные пилоты по цифровым двойникам показывают потенциал, но пока не стали нормой."/>
+              <circle class="radar-point" cx="223.4" cy="360"   r="4"
+                      fill="#22c55e"
+                      data-id="S2"
+                      data-type="signal"
+                      data-intensity="4"
+                      data-name="Требование машинных данных от подрядчиков"
+                      data-desc="Заказчики начинают требовать «сырые» данные от подрядчиков в составе контракта."/>
+              <circle class="radar-point" cx="210"   cy="310"   r="4"
+                      fill="#22c55e"
+                      data-id="S3"
+                      data-type="signal"
+                      data-intensity="4"
+                      data-name="Спутниковая верификация «на бытовом уровне»"
+                      data-desc="Спутниковые снимки и карты используются для проверки работ даже на бытовом уровне."/>
+              <circle class="radar-point" cx="266.7" cy="285"   r="4"
+                      fill="#22c55e"
+                      data-id="S4"
+                      data-type="signal"
+                      data-intensity="2"
+                      data-name="Анализ тональности обращений"
+                      data-desc="Экспериментальные проекты по анализу тональности сообщений и обращений граждан."/>
+              <circle class="radar-point" cx="260"   cy="223.4" r="4"
+                      fill="#22c55e"
+                      data-id="S5"
+                      data-type="signal"
+                      data-intensity="4"
+                      data-name="Запрос нового поколения управленцев"
+                      data-desc="Молодые управленцы хотят управлять по данным и требуют прозрачных метрик."/>
+
+              <!-- Подписи по кругу (укороченные) -->
+              <text x="310" y="38"  text-anchor="middle" font-size="10">T1 — разрыв отчеты/реальность</text>
+              <text x="435" y="65"  text-anchor="middle" font-size="10">T2 — объективные данные</text>
+              <text x="526" y="150" text-anchor="middle" font-size="10">T3 — управление отписками</text>
+              <text x="560" y="290" text-anchor="middle" font-size="10">T4 — изоляция данных</text>
+              <text x="526" y="440" text-anchor="middle" font-size="10">T5 — нет владельца</text>
+              <text x="410" y="560" text-anchor="middle" font-size="10">T6 — ручной контроль</text>
+              <text x="310" y="585" text-anchor="middle" font-size="10">T7 — связь с гражданами</text>
+              <text x="190" y="560" text-anchor="middle" font-size="10">S1 — цифровые двойники</text>
+              <text x="80"  y="440" text-anchor="middle" font-size="10">S2 — машинные данные</text>
+              <text x="40"  y="290" text-anchor="middle" font-size="10">S3 — спутниковая верификация</text>
+              <text x="80"  y="150" text-anchor="middle" font-size="10">S4 — тональность обращений</text>
+              <text x="190" y="65"  text-anchor="middle" font-size="10">S5 — новое поколение</text>
+            </svg>
+          </div>
+
+          <div class="chart-card">
+            <p class="chart-title">Матрица «вероятность × влияние»</p>
+            <p class="chart-subtitle">
+              Красные точки — триггеры, зелёные — слабые сигналы. Чем выше и правее, тем выше приоритет.
+            </p>
+
+            <svg id="matrix-chart" viewBox="0 0 640 480" role="img" aria-label="Матрица приоритизации триггеров и слабых сигналов">
+              <rect x="0" y="0" width="640" height="480" rx="24" ry="24" fill="rgba(15,23,42,0.98)"/>
+
+              <!-- Сетка: вероятность (по X) и влияние (по Y) -->
+              <!-- Вертикальные линии (вероятность) -->
+              <line x1="70"  y1="40" x2="70"  y2="410" stroke="rgba(148,163,184,0.25)" stroke-width="1"/>
+              <line x1="174" y1="40" x2="174" y2="410" stroke="rgba(148,163,184,0.25)" stroke-width="1"/>
+              <line x1="278" y1="40" x2="278" y2="410" stroke="rgba(148,163,184,0.25)" stroke-width="1"/>
+              <line x1="382" y1="40" x2="382" y2="410" stroke="rgba(148,163,184,0.25)" stroke-width="1"/>
+              <line x1="486" y1="40" x2="486" y2="410" stroke="rgba(148,163,184,0.25)" stroke-width="1"/>
+              <line x1="590" y1="40" x2="590" y2="410" stroke="rgba(148,163,184,0.25)" stroke-width="1"/>
+
+              <!-- Горизонтальные линии (влияние) -->
+              <line x1="70" y1="40"  x2="590" y2="40"  stroke="rgba(148,163,184,0.25)" stroke-width="1"/>
+              <line x1="70" y1="114" x2="590" y2="114" stroke="rgba(148,163,184,0.25)" stroke-width="1"/>
+              <line x1="70" y1="188" x2="590" y2="188" stroke="rgba(148,163,184,0.25)" stroke-width="1"/>
+              <line x1="70" y1="262" x2="590" y2="262" stroke="rgba(148,163,184,0.25)" stroke-width="1"/>
+              <line x1="70" y1="336" x2="590" y2="336" stroke="rgba(148,163,184,0.25)" stroke-width="1"/>
+              <line x1="70" y1="410" x2="590" y2="410" stroke="rgba(148,163,184,0.25)" stroke-width="1"/>
+
+              <!-- Подписи осей -->
+              <text x="330" y="26" text-anchor="middle" font-size="11">Вероятность</text>
+              <text x="24" y="230" text-anchor="middle" font-size="11" transform="rotate(-90 24 230)">Влияние на систему</text>
+
+              <!-- Названия квадрантов -->
+              <text x="140" y="80"  font-size="10">Низкая вероятность / высокое влияние</text>
+              <text x="400" y="80"  font-size="10">Высокая вероятность / высокое влияние</text>
+              <text x="140" y="380" font-size="10">Низкая вероятность / низкое влияние</text>
+              <text x="400" y="380" font-size="10">Высокая вероятность / низкое влияние</text>
+
+              <!-- Триггеры: красные точки -->
+              <!-- Высокая вероятность / высокое влияние: T1, T3 -->
+              <circle class="matrix-point" cx="538" cy="77" r="5"
+                      fill="#f97373"
+                      data-ids="T1, T3"
+                      data-type="trigger"
+                      data-desc="Высокая вероятность и сильное влияние на эффективность проектов. Приоритет №1 для изменения модели управления."/>
+              <text x="548" y="69" font-size="10" fill="#e5e7eb">T1, T3</text>
+
+              <!-- T2, T4, T7 -->
+              <circle class="matrix-point" cx="486" cy="114" r="5"
+                      fill="#f97373"
+                      data-ids="T2, T4, T7"
+                      data-type="trigger"
+                      data-desc="Высокая вероятность и заметное влияние. Требуют системных изменений в данных и межведомственном обмене."/>
+              <text x="496" y="106" font-size="10" fill="#e5e7eb">T2, T4, T7</text>
+
+              <!-- T5, T6 -->
+              <circle class="matrix-point" cx="434" cy="151" r="5"
+                      fill="#f97373"
+                      data-ids="T5, T6"
+                      data-type="trigger"
+                      data-desc="Средняя вероятность, но высокая нагрузка на людей. Приоритет для автоматизации ручного контроля."/>
+              <text x="444" y="143" font-size="10" fill="#e5e7eb">T5, T6</text>
+
+              <!-- Слабые сигналы: зелёные точки -->
+              <!-- S1 -->
+              <circle class="matrix-point" cx="278" cy="225" r="5"
+                      fill="#22c55e"
+                      data-ids="S1"
+                      data-type="signal"
+                      data-desc="Пока редкие инициативы по цифровым двойникам, но высокий потенциал для долгосрочного влияния."/>
+              <text x="288" y="217" font-size="10" fill="#e5e7eb">S1</text>
+
+              <!-- S2, S3 -->
+              <circle class="matrix-point" cx="330" cy="188" r="5"
+                      fill="#22c55e"
+                      data-ids="S2, S3"
+                      data-type="signal"
+                      data-desc="Сигналы зрелости: заказчики начинают требовать машинные данные и независимую верификацию."/>
+              <text x="340" y="180" font-size="10" fill="#e5e7eb">S2, S3</text>
+
+              <!-- S4 -->
+              <circle class="matrix-point" cx="226" cy="262" r="5"
+                      fill="#22c55e"
+                      data-ids="S4"
+                      data-type="signal"
+                      data-desc="Аналитика тональности пока нишевая, но показывает спрос на использование текстовых данных."/>
+              <text x="236" y="254" font-size="10" fill="#e5e7eb">S4</text>
+
+              <!-- S5 -->
+              <circle class="matrix-point" cx="330" cy="225" r="5"
+                      fill="#22c55e"
+                      data-ids="S5"
+                      data-type="signal"
+                      data-desc="Новое поколение управленцев, заинтересованных в данных, — главный драйвер устойчивых изменений."/>
+              <text x="340" y="217" font-size="10" fill="#e5e7eb">S5</text>
+            </svg>
+          </div>
+        </div>
+
+        <div id="hover-info" class="info-box">
+          Наведите курсор на любую точку на радаре или в матрице, чтобы увидеть подробности триггера или слабого сигнала.
+        </div>
+      </div>
+    </section>
+
+    <!-- СЛАЙД 4: сценарий 1 -->
+    <section class="slide" id="slide-4">
+      <div class="slide-number">СЛАЙД 4</div>
+      <div class="slide-inner">
+        <div class="tagline">
+          <span class="tagline-dot"></span>
+          Сценарий будущего #1
+        </div>
+        <h2>Сценарий 1. Консервативное цифровое сопровождение</h2>
+        <p class="muted">Вероятность реализации: <strong>40%</strong></p>
+        <p>
+          Цифровые решения используются как вспомогательный слой к существующей системе управления. Основной фокус —
+          контроль отчетности и базовая аналитика, без глубокой трансформации процессов.
+        </p>
+
+        <div class="grid-2">
+          <div class="card card-muted">
+            <h3>Ключевые условия</h3>
+            <ul>
+              <li>Политическая установка на «аккуратную» цифровизацию без резких изменений.</li>
+              <li>Сохранение существующей бюрократической логики принятия решений.</li>
+              <li>Ограниченный бюджет на интеграции и сквозную аналитику.</li>
+            </ul>
+          </div>
+          <div class="card card-muted">
+            <h3>Кто выигрывает / кто проигрывает</h3>
+            <p class="muted"><strong>Победители:</strong></p>
+            <ul>
+              <li>Поставщики отчётных систем и витрин данных без глубокой автоматизации.</li>
+              <li>Исполнители, для которых важнее формальная закрываемость KPI.</li>
+            </ul>
+            <p class="muted"><strong>Проигравшие:</strong></p>
+            <ul>
+              <li>Граждане, ожидающие реальных изменений на земле.</li>
+              <li>Команды, готовые к радикальному использованию данных и автоматизации.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Финансовые последствия</h3>
+          <ul>
+            <li>Затраты на поддержание нескольких разрозненных систем.</li>
+            <li>Слабый эффект в части экономии и сокращения потерь.</li>
+            <li>Риск «усталости от цифровизации» без видимого результата для граждан.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- СЛАЙД 5: сценарий 2 -->
+    <section class="slide" id="slide-5">
+      <div class="slide-number">СЛАЙД 5</div>
+      <div class="slide-inner">
+        <div class="tagline">
+          <span class="tagline-dot"></span>
+          Сценарий будущего #2
+        </div>
+        <h2>Сценарий 2. Системная цифровая трансформация</h2>
+        <p class="muted">Вероятность реализации: <strong>45%</strong></p>
+        <p>
+          Данные становятся основой управления проектами: строятся сквозные витрины, автоматизируются
+          контроль и план-факт, выстраиваются новые роли и процессы вокруг аналитики.
+        </p>
+
+        <div class="grid-2">
+          <div class="card card-muted">
+            <h3>Ключевые условия</h3>
+            <ul>
+              <li>Поддержка со стороны федерального центра и региональных лидеров.</li>
+              <li>Запуск пилотов с измеримым экономическим эффектом.</li>
+              <li>Создание межведомственных команд по данным и цифровым сервисам.</li>
+            </ul>
+          </div>
+          <div class="card card-muted">
+            <h3>Кто выигрывает / кто проигрывает</h3>
+            <p class="muted"><strong>Победители:</strong></p>
+            <ul>
+              <li>Граждане и бизнес, видящие реальное улучшение качества проектов.</li>
+              <li>Команды, ориентированные на результат и управление по данным.</li>
+            </ul>
+            <p class="muted"><strong>Проигравшие:</strong></p>
+            <ul>
+              <li>Игроки, привыкшие к «витринной» отчетности и ручным договоренностям.</li>
+              <li>Проекты без прозрачных метрик и данных, которые тяжело защитить.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Финансовые последствия</h3>
+          <ul>
+            <li>Снижение потерь за счёт более раннего выявления сбоев и аномалий.</li>
+            <li>Оптимизация бюджетов за счёт устранения дублирующих систем и ручного труда.</li>
+            <li>Повышение доверия к государственным вложениям со стороны общества и бизнеса.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- СЛАЙД 6: сценарий 3 -->
+    <section class="slide" id="slide-6">
+      <div class="slide-number">СЛАЙД 6</div>
+      <div class="slide-inner">
+        <div class="tagline">
+          <span class="tagline-dot"></span>
+          Сценарий будущего #3
+        </div>
+        <h2>Сценарий 3. Точечные островки эффективности</h2>
+        <p class="muted">Вероятность реализации: <strong>15%</strong></p>
+        <p>
+          Отдельные регионы и команды создают свои локальные решения, добиваются успеха,
+          но общесистемных изменений не происходит — на уровне страны картинка остаётся «лоскутной».
+        </p>
+
+        <div class="grid-2">
+          <div class="card card-muted">
+            <h3>Ключевые условия</h3>
+            <ul>
+              <li>Отсутствие единой федеральной повестки по данным.</li>
+              <li>Инициативы зависят от отдельных лидеров и их влияния.</li>
+              <li>Разные стандарты данных и подходов по регионам.</li>
+            </ul>
+          </div>
+          <div class="card card-muted">
+            <h3>Кто выигрывает / кто проигрывает</h3>
+            <p class="muted"><strong>Победители:</strong></p>
+            <ul>
+              <li>Сильные регионы с собственными ресурсами и командами.</li>
+              <li>Лидеры цифровых изменений на местах.</li>
+            </ul>
+            <p class="muted"><strong>Проигравшие:</strong></p>
+            <ul>
+              <li>Слабые регионы без ресурсов и экспертизы.</li>
+              <li>Федеральный уровень, не имеющий единой картины и стандартов.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Финансовые последствия</h3>
+          <ul>
+            <li>Разный уровень эффективности проектов между регионами.</li>
+            <li>Дублирование затрат на разработку и поддержку аналогичных решений.</li>
+            <li>Сложность расчёта совокупного эффекта и сравнения результатов.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- СЛАЙД 7: дерево -->
+    <section class="slide" id="slide-7">
+      <div class="slide-number">СЛАЙД 7</div>
+      <div class="slide-inner">
+        <div class="tagline">
+          <span class="tagline-dot"></span>
+          Дерево возможностей → решений → фич
+        </div>
+        <h2>Полное дерево решений</h2>
+        <p class="muted">
+          Дерево показывает, как от верхнеуровневых возможностей (O1–O8) мы переходим к конкретным решениям (S)
+          и реализуемым фичам (F). Оно используется как карта для приоритизации и планирования бэклога.
+        </p>
+
+        <pre class="tree-diagram">O1: Автоматический сбор объективных данных о ходе проектов
+|--- S1: Единый слой данных исполнения проектов
+|     |--- F1: Интеграция с финансовыми системами
+|     |--- F2: Интеграция с системами датчиков и IoT
+|     |--- F3: Интеграция с источниками спутниковых данных
+
+O2: План-факт контроль исполнения
+|--- S1-A: Модуль план-факт аналитики
+|     |--- F1: Сопоставление сметы и фактических расходов
+|     |--- F2: Сопоставление плановых и фактических сроков
+|     |--- F3: Визуализация отклонений по KPI
+
+O3: Сквозной мониторинг обращений граждан
+|--- S2: Центр интеграции обратной связи
+|     |--- F1: Подключение порталов обращений граждан
+|     |--- F2: Подключение горячих линий и мессенджеров
+|     |--- F3: Подключение соцсетей и отзывов
+
+O4: Аналитика содержания и тональности обращений
+|--- S2-A: Аналитический модуль по обращениям
+|     |--- F1: Классификация обращений по тематикам
+|     |--- F2: Анализ тональности и эмоциональной окраски
+|     |--- F3: Выявление повторяющихся и системных проблем
+
+O5: Автоматизация контроля и проверки работ
+|--- S3: Визуальная верификация выполнения работ
+|     |--- F1: Сравнение фото «до» и «после»
+|     |--- F2: Сопоставление спутниковых снимков по временным срезам
+|     |--- F3: Маркировка объектов на карте и сверка с планом
+
+O6: Интеллектуальная поддержка решений
+|--- S4: Ассистент для руководителей проектов
+|     |--- F1: Рекомендации по реагированию на аномалии
+|     |--- F2: Приоритизация задач по рискам и влиянию
+|     |--- F3: Сценарный анализ «что если»
+
+O7: Стандартизация данных и метрик
+|--- S5: Каталог метрик и показателей
+|     |--- F1: Единый словарь показателей для проектов
+|     |--- F2: Настройка сопоставления показателей между ведомствами
+|     |--- F3: Мониторинг качества данных
+
+O8: Платформенная модель для масштабирования
+|--- S6: Платформенный контур для регионов и муниципалитетов
+      |--- F1: Управление подключением территорий
+      |--- F2: Модуль шаблонов проектов и типовых дашбордов
+      |--- F3: Конструктор интеграций и источников данных</pre>
+      </div>
+    </section>
+
+    <!-- СЛАЙД 8: портфель решений -->
+    <section class="slide" id="slide-8">
+      <div class="slide-number">СЛАЙД 8</div>
+      <div class="slide-inner">
+        <div class="tagline">
+          <span class="tagline-dot"></span>
+          Портфель решений
+        </div>
+        <h2>От возможностей (O) к решениям (S)</h2>
+        <p class="muted">
+          Для каждой возможности из дерева (O1–O8) сформулировано минимально жизнеспособное решение (S),
+          которое может быть оформлено как SaaS-платформа, модуль или инструмент.
+        </p>
+
+        <table>
+          <thead>
+            <tr>
+              <th>O#</th>
+              <th>Возможность</th>
+              <th>Решение</th>
+              <th>Краткое описание</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="chip chip-blue">O1</span></td>
+              <td><strong>Автоматический сбор объективных данных</strong><br><span class="muted">Сведение финансовых, технических и полевых данных о ходе проектов.</span></td>
+              <td><strong>Единый слой данных исполнения</strong><br><span class="muted">Интеграционная платформа</span></td>
+              <td class="muted">Консолидирует данные из разных систем и формирует единый «источник правды» по каждому проекту.</td>
+            </tr>
+            <tr>
+              <td><span class="chip chip-blue">O2</span></td>
+              <td><strong>План-факт контроль</strong><br><span class="muted">Сравнение плановых KPI, сроков и смет с фактом исполнения.</span></td>
+              <td><strong>Модуль план-факт аналитики</strong><br><span class="muted">Аналитический модуль</span></td>
+              <td class="muted">Позволяет в режиме близком к реальному времени отслеживать отклонения и их причины.</td>
+            </tr>
+            <tr>
+              <td><span class="chip chip-blue">O3</span></td>
+              <td><strong>Сквозной мониторинг обращений граждан</strong><br><span class="muted">Сбор обратной связи из разных каналов.</span></td>
+              <td><strong>Центр интеграции обратной связи</strong><br><span class="muted">Коммуникационный хаб</span></td>
+              <td class="muted">Объединяет обращения граждан в единый поток и связывает их с конкретными проектами и локациями.</td>
+            </tr>
+            <tr>
+              <td><span class="chip chip-blue">O4</span></td>
+              <td><strong>Аналитика содержания и тональности обращений</strong><br><span class="muted">Выявление жалоб и трендов по текстам.</span></td>
+              <td><strong>Аналитический модуль по обращениям</strong><br><span class="muted">ML-модуль</span></td>
+              <td class="muted">Автоматически группирует обращения, анализирует тональность и подсвечивает зоны риска.</td>
+            </tr>
+            <tr>
+              <td><span class="chip chip-blue">O5</span></td>
+              <td><strong>Автоматизация контроля и проверки работ</strong><br><span class="muted">Снижение доли ручных проверок.</span></td>
+              <td><strong>Визуальная верификация выполнения работ</strong><br><span class="muted">Vision-решение</span></td>
+              <td class="muted">Сопоставляет фото, видео и спутниковые снимки с планом работ и автоматически ищет несоответствия.</td>
+            </tr>
+            <tr>
+              <td><span class="chip chip-blue">O6</span></td>
+              <td><strong>Интеллектуальная поддержка решений</strong><br><span class="muted">Помощник руководителя проектов.</span></td>
+              <td><strong>Ассистент для руководителей проектов</strong><br><span class="muted">Decision Support</span></td>
+              <td class="muted">Формирует рекомендации по реагированию на аномалии и приоритизирует задачи по рискам.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- СЛАЙД 9: фичи -->
+    <section class="slide" id="slide-9">
+      <div class="slide-number">СЛАЙД 9</div>
+      <div class="slide-inner">
+        <div class="tagline">
+          <span class="tagline-dot"></span>
+          Функциональность
+        </div>
+        <h2>Ключевые фичи решений</h2>
+        <p class="muted">
+          Ниже — детали по основным решениям: для каждого показаны 2–3 ключевые фичи, которые несут
+          максимум ценности на старте пилота.
+        </p>
+
+        <div class="grid-2">
+          <div class="card">
+            <p class="badge">Возможность O1</p>
+            <h3>Единый слой данных исполнения</h3>
+            <p class="muted">Автоматический сбор объективных данных.</p>
+            <p class="muted"><em>Интеграционная платформа</em></p>
+            <ul>
+              <li><strong>F1 — Интеграция с финансовыми системами.</strong> Подключение казначейских и бухгалтерских контуров для отслеживания фактических расходов.</li>
+              <li><strong>F2 — Интеграция с системами датчиков и IoT.</strong> Сбор телеметрии от техники и инфраструктуры.</li>
+              <li><strong>F3 — Интеграция со спутниковыми и картографическими данными.</strong> Автоматическая привязка факта к географии.</li>
+            </ul>
+          </div>
+
+          <div class="card">
+            <p class="badge">Возможность O2</p>
+            <h3>Модуль план-факт аналитики</h3>
+            <p class="muted">План-факт контроль исполнения.</p>
+            <p class="muted"><em>Аналитический модуль</em></p>
+            <ul>
+              <li><strong>F1 — Сопоставление сметы и фактических расходов.</strong> Отслеживание перерасходов и экономии по статьям.</li>
+              <li><strong>F2 — Сопоставление плановых и фактических сроков.</strong> Выявление отставаний и опережений по календарю.</li>
+              <li><strong>F3 — Визуализация отклонений по KPI.</strong> Дашборды с подсветкой критических зон по проектам.</li>
+            </ul>
+          </div>
+
+          <div class="card">
+            <p class="badge">Возможность O3</p>
+            <h3>Центр интеграции обратной связи</h3>
+            <p class="muted">Сквозной мониторинг обращений граждан.</p>
+            <p class="muted"><em>Коммуникационный хаб</em></p>
+            <ul>
+              <li><strong>F1 — Подключение порталов обращений граждан.</strong> Интеграция с гос-порталами и региональными системами.</li>
+              <li><strong>F2 — Подключение горячих линий и мессенджеров.</strong> Консолидация звонков, чатов и сообщений.</li>
+              <li><strong>F3 — Подключение соцсетей и отзывов.</strong> Мониторинг упоминаний проектов в открытых источниках.</li>
+            </ul>
+          </div>
+
+          <div class="card">
+            <p class="badge">Возможность O4</p>
+            <h3>Аналитический модуль по обращениям</h3>
+            <p class="muted">Аналитика содержания и тональности обращений.</p>
+            <p class="muted"><em>ML-модуль</em></p>
+            <ul>
+              <li><strong>F1 — Классификация обращений по темам.</strong> Автоматическое отнесение жалоб к типовым категориям.</li>
+              <li><strong>F2 — Анализ тональности и эмоциональной окраски.</strong> Оценка настроения граждан по проектам.</li>
+              <li><strong>F3 — Выявление системных проблем.</strong> Поиск повторяющихся сюжетов и рост точек напряжения.</li>
+            </ul>
+          </div>
+
+          <div class="card">
+            <p class="badge">Возможность O5</p>
+            <h3>Визуальная верификация выполнения работ</h3>
+            <p class="muted">Автоматизация контроля и проверки работ.</p>
+            <p class="muted"><em>Vision-решение</em></p>
+            <ul>
+              <li><strong>F1 — Сравнение фото «до» и «после».</strong> Автоматическая проверка факта выполнения работ по изображению.</li>
+              <li><strong>F2 — Анализ спутниковых снимков.</strong> Мониторинг крупных объектов и территорий.</li>
+              <li><strong>F3 — Маркировка объектов на карте.</strong> Привязка работ к конкретным адресам и участкам.</li>
+            </ul>
+          </div>
+
+          <div class="card">
+            <p class="badge">Возможность O6</p>
+            <h3>Ассистент для руководителей проектов</h3>
+            <p class="muted">Интеллектуальная поддержка решений.</p>
+            <p class="muted"><em>Decision Support</em></p>
+            <ul>
+              <li><strong>F1 — Рекомендации по реагированию на аномалии.</strong> Подсказки, где и как вмешаться в первую очередь.</li>
+              <li><strong>F2 — Приоритизация задач по рискам.</strong> Ранжирование бэклога по влиянию на итоговые KPI.</li>
+              <li><strong>F3 — Сценарный анализ «что если».</strong> Прогноз возможных последствий решений.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- СЛАЙД 10: связь аналитики и продукта -->
+    <section class="slide" id="slide-10">
+      <div class="slide-number">СЛАЙД 10</div>
+      <div class="slide-inner">
+        <div class="tagline">
+          <span class="tagline-dot"></span>
+          Склейка аналитики и продукта
+        </div>
+        <h2>Как триггеры и сигналы ложатся на решения</h2>
+        <div class="grid-2">
+          <div class="card card-muted">
+            <h3>От триггеров к возможностям (O)</h3>
+            <ul>
+              <li><strong>T1–T3</strong> → O1/O2: разрыв между отчётами и реальностью превращаем в запрос на автоматический сбор данных и план/факт-контроль.</li>
+              <li><strong>T4–T7</strong> → O3/O4: проблемы с межведомственным обменом и обратной связью граждан переводим в единый слой мониторинга.</li>
+              <li><strong>Ручной контроль (T5–T6)</strong> → O5/O6: автоматизируем отчётность и принятие решений, снижаем нагрузку на людей.</li>
+            </ul>
+          </div>
+          <div class="card card-muted">
+            <h3>Роль слабых сигналов (S)</h3>
+            <ul>
+              <li><strong>S1–S3</strong>: показывают зрелые практики (цифровые двойники, машинные данные, спутники), на которые можно опираться при дизайне решений.</li>
+              <li><strong>S4–S5</strong>: сигнализируют про спрос на качественную аналитику обращений и новое поколение управленцев, готовых работать с данными.</li>
+              <li>Итог — продукт не только тушит пожары, но и создаёт основу для системной трансформации управления.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- СЛАЙД 11: дорожная карта -->
+    <section class="slide" id="slide-11">
+      <div class="slide-number">СЛАЙД 11</div>
+      <div class="slide-inner">
+        <div class="tagline">
+          <span class="tagline-dot"></span>
+          Дорожная карта
+        </div>
+        <h2>Пошаговое внедрение решения</h2>
+        <ol class="roadmap">
+          <li class="roadmap-step">
+            <h3 class="roadmap-step-title">Шаг 1. Диагностика (1–2 месяца)</h3>
+            <p>Сбор и анализ триггеров и слабых сигналов, построение радара и матрицы, выбор 2–3 приоритетных возможностей (O).</p>
+          </li>
+          <li class="roadmap-step">
+            <h3 class="roadmap-step-title">Шаг 2. Дизайн и прототип (2–3 месяца)</h3>
+            <p>Проработка решений (S), детализация фич (F), создание прототипов дашбордов и интеграционных сценариев.</p>
+          </li>
+          <li class="roadmap-step">
+            <h3 class="roadmap-step-title">Шаг 3. Пилот (6–9 месяцев)</h3>
+            <p>Запуск пилота в выбранных муниципальных проектах, настройка сбора данных, обучение пользователей, получение первого измеримого эффекта.</p>
+          </li>
+          <li class="roadmap-step">
+            <h3 class="roadmap-step-title">Шаг 4. Масштабирование</h3>
+            <p>Расширение по географии и направлениям проектов, добавление новых модулей и фич, формирование единого стандарта.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- СЛАЙД 12: риски -->
+    <section class="slide" id="slide-12">
+      <div class="slide-number">СЛАЙД 12</div>
+      <div class="slide-inner">
+        <div class="tagline">
+          <span class="tagline-dot"></span>
+          Риски и ограничения
+        </div>
+        <h2>Что может помешать и как с этим работать</h2>
+        <div class="grid-2">
+          <div class="card card-muted">
+            <h3>Ключевые риски</h3>
+            <ul>
+              <li>Недостаточное качество исходных данных и разрыв между ведомственными системами.</li>
+              <li>Сопротивление изменениям со стороны исполнителей и руководителей проектов.</li>
+              <li>Ограниченный бюджет и конкуренция с другими ИТ-инициативами.</li>
+              <li>Юридические и регуляторные ограничения по работе с данными.</li>
+            </ul>
+          </div>
+          <div class="card card-muted">
+            <h3>Стратегии снижения рисков</h3>
+            <ul>
+              <li>Старт с пилота и быстрая демонстрация экономического эффекта.</li>
+              <li>Фокус на интеграции с уже существующими государственными системами (ГИС, ЕИС и др.).</li>
+              <li>Модульная архитектура и прозрачная модель совокупной стоимости владения для заказчика.</li>
+              <li>Работа с лидерами изменений и обучающие программы для пользователей.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- СЛАЙД 13: итоги -->
+    <section class="slide" id="slide-13">
+      <div class="slide-number">СЛАЙД 13</div>
+      <div class="slide-inner">
+        <div class="tagline">
+          <span class="tagline-dot"></span>
+          Итоги
+        </div>
+        <h2>Что мы предлагаем</h2>
+        <ul>
+          <li>Системный подход к выявлению триггеров и слабых сигналов в управлении госпроектами.</li>
+          <li>Набор сценариев будущего и продуктовую архитектуру, опирающуюся на реальные данные.</li>
+          <li>Пакет решений и фичей, готовых к пилоту в 1–2 городах.</li>
+          <li>Понятную дорожную карту масштабирования и критерии успеха.</li>
+        </ul>
+        <p class="lead">Следующий шаг — согласовать пилот и собрать совместную команду внедрения.</p>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      const infoBox = document.getElementById("hover-info");
+      const defaultHtml = infoBox ? infoBox.innerHTML : "";
+
+      function setInfo(title, body) {
+        if (!infoBox) return;
+        infoBox.innerHTML = "<strong>" + title + "</strong><br>" + body;
+      }
+
+      function attachHover(selector, getContent) {
+        const nodes = document.querySelectorAll(selector);
+        nodes.forEach(function (el) {
+          el.addEventListener("mouseenter", function () {
+            const content = getContent(el);
+            if (content) {
+              setInfo(content.title, content.body);
+            }
+            const baseR = parseFloat(el.getAttribute("r") || "4");
+            el.setAttribute("data-r-orig", baseR.toString());
+            el.setAttribute("r", (baseR + 2).toString());
+            el.setAttribute("stroke", "#020617");
+            el.setAttribute("stroke-width", "1.6");
+          });
+          el.addEventListener("mouseleave", function () {
+            if (!infoBox) return;
+            infoBox.innerHTML = defaultHtml;
+            const orig = parseFloat(el.getAttribute("data-r-orig") || "0");
+            if (orig > 0) {
+              el.setAttribute("r", orig.toString());
+            }
+            el.removeAttribute("stroke");
+            el.removeAttribute("stroke-width");
+          });
+        });
+      }
+
+      attachHover(".radar-point", function (el) {
+        const id = (el.getAttribute("data-id") || "").toUpperCase();
+        const name = el.getAttribute("data-name") || "";
+        const typeRaw = el.getAttribute("data-type") || "";
+        const typeLabel = typeRaw === "trigger" ? "Триггер" : "Слабый сигнал";
+        const intensity = el.getAttribute("data-intensity") || "?";
+        const desc = el.getAttribute("data-desc") || "";
+        return {
+          title: id + " — " + name,
+          body:
+            "<strong>Тип:</strong> " + typeLabel +
+            "<br><strong>Интенсивность:</strong> " + intensity + "/10" +
+            (desc ? "<br><br>" + desc : "")
+        };
+      });
+
+      attachHover(".matrix-point", function (el) {
+        const ids = el.getAttribute("data-ids") || "";
+        const typeRaw = el.getAttribute("data-type") || "";
+        const typeLabel = typeRaw === "trigger" ? "Триггеры" : "Слабые сигналы";
+        const desc = el.getAttribute("data-desc") || "";
+        return {
+          title: ids,
+          body:
+            "<strong>Тип:</strong> " + typeLabel +
+            (desc ? "<br><br>" + desc : "")
+        };
+      });
+    });
+  </script>
+</body>
+</html>
